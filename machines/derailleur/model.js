@@ -96,8 +96,11 @@ function tangent(c1, r1, s1, c2, r2, s2) {
 }
 const TAU = Math.PI * 2;
 const mod = (a, m) => ((a % m) + m) % m;
+// a chain wraps a sprocket as a polygon of 12.7 mm chords, one roller per tooth: along an arc the rollers advance one
+// tooth angle (2 pi / N) per pitch, so arc lengths use the radius pitch * N / (2 pi), a hair under the pitch radius
+const rollRadius = (c) => (c.n ? (DR.pitch * c.n) / TAU : c.r);
 /**
- * The loop in order of chain travel: chainring -> lower pulley -> upper pulley -> cog. Each circle: {c: [f, y], r, s, x}.
+ * The loop in order of chain travel: chainring -> lower pulley -> upper pulley -> cog. Each circle: {c: [f, y], r, s, x, n}.
  * Returns segments with lengths; the total is the chain length that path needs.
  */
 export function chainPath(circles) {
@@ -115,8 +118,9 @@ export function chainPath(circles) {
     const a0 = Math.atan2(arrive[1] - c.c[1], arrive[0] - c.c[0]);
     const a1 = Math.atan2(leave[1] - c.c[1], leave[0] - c.c[0]);
     const sweep = c.s > 0 ? mod(a1 - a0, TAU) : mod(a0 - a1, TAU);
-    segs.push({type: 'arc', c: c.c, r: c.r, s: c.s, a0, sweep, x: c.x, len: c.r * sweep, name: c.name});
-    total += c.r * sweep;
+    const re = rollRadius(c);
+    segs.push({type: 'arc', c: c.c, r: c.r, re, s: c.s, a0, sweep, x: c.x, len: re * sweep, name: c.name});
+    total += re * sweep;
     const [p, q] = tans[i];
     const L = Math.hypot(q[0] - p[0], q[1] - p[1]);
     segs.push({type: 'line', p, q, x0: c.x, x1: circles[(i + 1) % n].x, len: L});
@@ -134,7 +138,7 @@ export function pathPoint(path, s) {
         const t = [(g.q[0] - g.p[0]) / g.len, (g.q[1] - g.p[1]) / g.len];
         return {x: g.x0 + (g.x1 - g.x0) * k, f: g.p[0] + (g.q[0] - g.p[0]) * k, y: g.p[1] + (g.q[1] - g.p[1]) * k, tf: t[0], ty: t[1], seg: g};
       }
-      const a = g.a0 + (g.s * u) / g.r;
+      const a = g.a0 + (g.s * u) / g.re;
       return {x: g.x, f: g.c[0] + g.r * Math.cos(a), y: g.c[1] + g.r * Math.sin(a), tf: -g.s * Math.sin(a), ty: g.s * Math.cos(a), seg: g, a};
     }
     u -= g.len;
@@ -142,30 +146,30 @@ export function pathPoint(path, s) {
   return pathPoint(path, 0);
 }
 
-const ringCircle = {c: DR.ringC, r: DR.Rr, s: -1, x: DR.ringX, name: 'ring'};
+const ringCircle = {c: DR.ringC, r: DR.Rr, s: -1, x: DR.ringX, n: DR.ring, name: 'ring'};
 /** the loop for a guide pulley at G, the cage at angle alpha (forward of straight down), the chain on cog radius R at x */
-export function loopFor(G, alpha, R, x) {
+export function loopFor(G, alpha, R, x, n) {
   const L = [G.f + DR.cageL * Math.sin(alpha), G.y - DR.cageL * Math.cos(alpha)];
   return [
     ringCircle,
-    {c: L, r: DR.Rp, s: -1, x: G.x, name: 'lower'},
-    {c: [G.f, G.y], r: DR.Rp, s: 1, x: G.x, name: 'upper'},
-    {c: [0, 0], r: R, s: -1, x, name: 'cog'},
+    {c: L, r: DR.Rp, s: -1, x: G.x, n: DR.pulleyT, name: 'lower'},
+    {c: [G.f, G.y], r: DR.Rp, s: 1, x: G.x, n: DR.pulleyT, name: 'upper'},
+    {c: [0, 0], r: R, s: -1, x, n, name: 'cog'},
   ];
 }
 // chain length: big ring round the biggest cog with no derailleur, plus 2 links, rounded up to an even link count
 {
-  const direct = chainPath([ringCircle, {c: [0, 0], r: DR.cogR[DR.cogs.length - 1], s: -1, x: 0}]).total;
+  const direct = chainPath([ringCircle, {c: [0, 0], r: DR.cogR[DR.cogs.length - 1], s: -1, x: 0, n: DR.cogs[DR.cogs.length - 1]}]).total;
   DR.links = Math.ceil((direct + 2 * DR.pitch) / (2 * DR.pitch)) * 2;
   DR.chainL = DR.links * DR.pitch;
 }
 /** the cage angle that makes the loop exactly the chain's length (a longer loop as the cage swings back) */
-export function solveCage(G, R, x) {
+export function solveCage(G, R, x, n) {
   let lo = -1.2;
   let hi = 1.5;
   for (let i = 0; i < 44; i++) {
     const m = (lo + hi) / 2;
-    if (chainPath(loopFor(G, m, R, x)).total > DR.chainL) lo = m;
+    if (chainPath(loopFor(G, m, R, x, n)).total > DR.chainL) lo = m;
     else hi = m;
   }
   return (lo + hi) / 2;
@@ -177,8 +181,9 @@ export function drivetrainAt(pull, e) {
   const fr = e - k0;
   const R = DR.cogR[k0] + (DR.cogR[k0 + 1] - DR.cogR[k0]) * fr;
   const x = DR.cogX[k0] + (DR.cogX[k0 + 1] - DR.cogX[k0]) * fr;
-  const alpha = solveCage(der.G, R, x);
-  const path = chainPath(loopFor(der.G, alpha, R, x));
+  const n = DR.cogs[k0] + (DR.cogs[k0 + 1] - DR.cogs[k0]) * fr;
+  const alpha = solveCage(der.G, R, x, n);
+  const path = chainPath(loopFor(der.G, alpha, R, x, n));
   const cogSeg = path.segs.find((g) => g.name === 'cog');
   const N = DR.cogs[Math.round(e)];
   const ratio = DR.ring / N;
@@ -196,7 +201,7 @@ export function drivetrainAt(pull, e) {
     bGap: Math.hypot(der.G.f, der.G.y) - R - DR.Rp,
     wrapTeeth: (cogSeg.sweep / TAU) * (DR.cogs[k0] + (DR.cogs[k0 + 1] - DR.cogs[k0]) * fr),
     chainline: (Math.atan2(DR.ringX - x, DR.ringC[0]) * 180) / Math.PI,
-    lower: loopFor(der.G, alpha, R, x)[1].c,
+    lower: loopFor(der.G, alpha, R, x, n)[1].c,
   };
 }
 /** the cog under the guide pulley for a lateral position */
