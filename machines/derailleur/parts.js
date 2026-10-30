@@ -263,6 +263,13 @@ export function buildDerailleur() {
     return best;
   };
   const midOf = (seg) => seg.a0 + (seg.s * seg.sweep) / 2;
+  // a sprocket turns one tooth per link of chain travel; the seat only trims it within a tooth, so the spider never
+  // snaps back when the roller nearest mid-wrap changes
+  const turn = (seg, n, s0, seat) => {
+    const step = (Math.PI * 2) / n;
+    const cont = (seg.s * s0 * step) / DR.pitch;
+    return seat === null ? cont : seat + step * Math.round((cont - seat) / step);
+  };
 
   const accent = new THREE.Color('#e0482b');
   const black = new THREE.Color('#000');
@@ -278,11 +285,10 @@ export function buildDerailleur() {
     placeChain(st.path, st.s);
     const seg = (name) => st.path.segs.find((s) => s.name === name);
     const cogSeg = seg('cog');
-    const cs = seatAngle([0, 0], cogSeg.r, midOf(cogSeg));
-    if (cs !== null) cassette.rotation.x = cs;
-    const rs = seatAngle(DR.ringC, DR.Rr, midOf(seg('ring')));
-    if (rs !== null) ringMesh.rotation.x = rs;
-    armPivot.rotation.x = -st.crank;
+    cassette.rotation.x = turn(cogSeg, DR.cogs[Math.round(st.e)], st.s, seatAngle([0, 0], cogSeg.r, midOf(cogSeg)));
+    const ringSeg = seg('ring');
+    ringMesh.rotation.x = turn(ringSeg, DR.ring, st.s, seatAngle(DR.ringC, DR.Rr, midOf(ringSeg)));
+    armPivot.rotation.x = ringMesh.rotation.x; // the arm is bolted to the ring
 
     // the derailleur from the guide pulley's position
     const G = W3(st.G);
@@ -306,10 +312,10 @@ export function buildDerailleur() {
     lower.position.copy(L);
     span(bolts[0], G.clone().add(new V3(-9, 0, 0)), G.clone().add(new V3(10, 0, 0)));
     span(bolts[1], L.clone().add(new V3(-9, 0, 0)), L.clone().add(new V3(10, 0, 0)));
-    const us = seatAngle([st.G.f, st.G.y], DR.Rp, midOf(seg('upper')));
-    const ls = seatAngle(st.lower, DR.Rp, midOf(seg('lower')));
-    if (us !== null) upper.rotation.x = us;
-    if (ls !== null) lower.rotation.x = ls;
+    const upSeg = seg('upper');
+    const loSeg = seg('lower');
+    upper.rotation.x = turn(upSeg, DR.pulleyT, st.s, seatAngle([st.G.f, st.G.y], DR.Rp, midOf(upSeg)));
+    lower.rotation.x = turn(loSeg, DR.pulleyT, st.s, seatAngle(st.lower, DR.Rp, midOf(loSeg)));
 
     // the accent: the cog the chain is climbing to, the parallelogram and guide pulley while they move
     cogMats.forEach((m, k) => glow(m, st.shifting && k === st.target ? 1 : 0));
