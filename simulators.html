@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Machine Simulators</title>
+<style>
+  :root { --bg: #f4f5f6; --ink: #16181b; --muted: #6b7078; --line: #e1e3e6; --accent: #e0312b; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 500 13px/1 -apple-system, Inter, system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 18px; height: 44px; padding: 0 16px; border-bottom: 1px solid var(--line); background: #fff; flex: none; }
+  h1 { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; }
+  nav { display: flex; gap: 4px; }
+  nav button { appearance: none; border: 1px solid var(--line); background: #fff; color: var(--ink); height: 28px; padding: 0 12px; font: inherit; font-weight: 600; letter-spacing: .4px; cursor: pointer; border-radius: 4px; }
+  nav button:hover { border-color: #c5c8cc; }
+  nav button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+  nav button small { font-weight: 500; color: var(--muted); margin-left: 6px; }
+  nav button[aria-pressed="true"] small { color: #b9bdc3; }
+  .hint { margin-left: auto; color: var(--muted); font-size: 12px; }
+  main { flex: 1; min-height: 0; position: relative; }
+  iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--bg); }
+  @media (max-width: 720px) { .hint, nav button small { display: none; } header { gap: 10px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Simulators</h1>
+  <nav id="nav"></nav>
+  <span class="hint">Drag to orbit · scroll to zoom · H hides panels</span>
+</header>
+<main><iframe id="sim" title="Simulator" allow="fullscreen"></iframe></main>
+<script>
+  // one simulator loaded at a time, so only one WebGL scene is running
+  const SIMS = [
+    {id: 'v8', name: 'V8 Engine', note: 'four-stroke'},
+    {id: 'cessna', name: 'Cessna 337 Gear', note: 'rack & pinion'},
+    {id: 'strandbeest', name: 'Strandbeest', note: 'Jansen linkage'},
+    {id: 'escapement', name: 'Watch Escapement', note: 'Swiss lever'},
+    {id: 'derailleur', name: 'Derailleur', note: '11-speed'},
+  ];
+  const nav = document.getElementById('nav');
+  const frame = document.getElementById('sim');
+  const buttons = SIMS.map((s) => {
+    const b = document.createElement('button');
+    b.innerHTML = `${s.name}<small>${s.note}</small>`;
+    b.addEventListener('click', () => select(s.id));
+    nav.appendChild(b);
+    return b;
+  });
+  function select(id) {
+    const i = Math.max(0, SIMS.findIndex((s) => s.id === id));
+    buttons.forEach((b, j) => b.setAttribute('aria-pressed', String(i === j)));
+    const src = `teardown-out/dist/${SIMS[i].id}-live.html`;
+    if (frame.getAttribute('src') !== src) frame.setAttribute('src', src);
+    history.replaceState(null, '', '#' + SIMS[i].id);
+    frame.focus();
+  }
+  // keys belong to the simulator, so hand it focus once it loads
+  frame.addEventListener('load', () => frame.focus());
+  select(location.hash.slice(1));
+</script>
+</body>
+</html>

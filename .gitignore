@@ -1,0 +1,6 @@
+.DS_Store
+FYI.eml
+SKILL.md
+teardown-out/*
+!teardown-out/dist/
+teardown-out/dist/v8-film.html
